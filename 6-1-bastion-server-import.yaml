@@ -1,0 +1,83 @@
+Description: MSP T2 Internship - CloudFormation - Bastion host
+
+Parameters:
+
+#  LatestAMI:
+#    Description: Static reference to latest Amazon Linux 2 AMI
+#    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+#    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+#    AllowedValues:
+#      - '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+
+  myKeyPair:
+    Description: Which Key Pair would you like to use for remote access?
+    Type: 'AWS::EC2::KeyPair::KeyName'
+
+  InstanceType:
+    Description: Instance size for the Bastion Host (default - t3.micro)
+    Type: String 
+    AllowedValues:
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t3.micro
+      - t3.small
+      - t3.medium
+      
+    Default: t3.micro
+
+Mappings: 
+  RegionMap: 
+    us-east-1: 
+      HVM64: "ami-0ff8a91507f77f867"
+    ap-northeast-3: 
+      HVM64: "ami-0c66c8e259df7ec04"
+#####################################################################################################
+
+Resources:
+
+  BastionHostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Bastion Host Security Group
+      VpcId: !ImportValue i2VPC
+      GroupName: !Join ["", [ !Ref "AWS::StackName", "BastionHostSecurityGroup"]]
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: "0.0.0.0/0"
+
+  LinuxBastionHost:
+    Type: AWS::EC2::Instance
+    #DependsOn: "InternetGateway"
+    Properties:
+      KeyName: !Ref myKeyPair
+      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', "HVM64"]
+      #ImageId: "ami-0c66c8e259df7ec04"
+      InstanceType: !Ref InstanceType
+      #InstanceType: "t4g.nano"
+      #ImageId: "ami-0c4151369dfab2351"
+      # 개발단계에서 프리티어 사용 가능 할 경우.
+      # InstanceType: "t2.micro"
+      # ImageId: "ami-086a3601cd7a83590"
+      NetworkInterfaces:
+      - AssociatePublicIpAddress: true
+        DeleteOnTermination: true
+        Description: ENI for bastion host
+        DeviceIndex: '0'
+        SubnetId: !ImportValue PublicSubnet1
+        GroupSet:
+        - !Ref BastionHostSecurityGroup
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}
+      - Key: CloudFormationStack
+        Value: !Ref 'AWS::StackId'
+      - Key: Application
+        Value: !Ref AWS::StackName
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash 
+          sudo yum -y update
+          sudo yum install -y tree
